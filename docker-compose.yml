@@ -1,0 +1,106 @@
+name: easyshop
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT}:5432"
+    restart: unless-stopped
+
+  config-server:
+    build:
+      context: ../easyshop-config-server
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
+    ports:
+      - "8888:8888"
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  auth-service:
+    build:
+      context: ../easyshop-auth-service
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
+      DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_SCHEMA: auth
+    ports:
+      - "9001:9001"
+    depends_on:
+      - config-server
+      - db
+    restart: unless-stopped
+
+  product-service:
+    build:
+      context: ../easyshop-product-service
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
+      DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_SCHEMA: products
+    ports:
+      - "9002:9002"
+    depends_on:
+      - config-server
+      - db
+    restart: unless-stopped
+
+  purchase-service:
+    build:
+      context: ../easyshop-purchase-service
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
+      DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_SCHEMA: purchases
+      PRODUCT_SERVICE_URL: http://product-service:9002
+    ports:
+      - "9003:9003"
+    depends_on:
+      - config-server
+      - db
+      - product-service
+    restart: unless-stopped
+
+  api-gateway:
+    build:
+      context: ../easyshop-api-gateway
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
+      AUTH_SERVICE_URL: http://auth-service:9001
+      PRODUCT_SERVICE_URL: http://product-service:9002
+      PURCHASE_SERVICE_URL: http://purchase-service:9003
+    ports:
+      - "8080:8080"
+    depends_on:
+      - config-server
+      - auth-service
+      - product-service
+      - purchase-service
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ../easyshop-webapp
+    environment:
+      API_BASE_URL: ${API_BASE_URL}
+    ports:
+      - "80:80"
+    depends_on:
+      - api-gateway
+    restart: unless-stopped
+
+volumes:
+  pgdata:
